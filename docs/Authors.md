@@ -1,9 +1,16 @@
 ---
-weight: 3
+weight: 4
 ---
 
 # Authors
 
+v.3.0.0 (as of Jan 2026)
+
+[Anan Li](https://github.com/lixy09) - li0047@hz.nl
+
+[Patryk Brandebura](https://github.com/patryk-br)
+
+---
 
 v.2.0.0 (as of July 2025)
 

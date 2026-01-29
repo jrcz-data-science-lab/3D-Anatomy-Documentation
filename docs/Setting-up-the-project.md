@@ -14,6 +14,34 @@ To begin development of this application, you need to retrieve Virtual Anatomy p
 
     (In this case it is 500MB buffer; adjust as needed, but this value should work in this case)
 
+## Required Unreal modules & plugins
+
+The game module (`Source/VirtualAnatomy/VirtualAnatomy.Build.cs`) depends on several engine modules and plugins:
+
+- **Public dependency modules** (used at runtime and in editor):
+  - `Core`, `CoreUObject`, `Engine`
+  - `InputCore`
+  - `HTTP`, `Json`, `JsonUtilities` (quiz API and JSON payloads)
+  - `EnhancedInput` (modern input mapping for camera/user controls)
+  - `Niagara` (blood and diagnosis visual FX)
+
+- **Private dependency modules**:
+  - `Slate`, `SlateCore` (UI framework)
+  - `UMG` (UI widgets: menus, sidebars, tree view, quiz UI, etc.)
+
+- **Editor-only private modules** (only for the Editor target):
+  - `UMGEditor`
+  - `ToolWidgets`
+
+On a fresh Unreal 5.5 install these modules are available by default, but you should ensure the following plugins are **enabled** in your project:
+
+- **Niagara**
+- **Enhanced Input**
+
+If you see build errors complaining about missing modules (e.g. `Niagara` or `EnhancedInput`), double-check that these plugins are enabled under **Edit → Plugins** and that you are using a compatible UE 5.5 installation.
+
+> Renderer note: the choice of renderer (e.g. Vulkan vs DirectX 12) is **not** configured in `VirtualAnatomy.Build.cs`. It is controlled via project config, typically in `Config/DefaultEngine.ini` under the Windows target settings (for example by setting `DefaultGraphicsRHI=DefaultGraphicsRHI_Vulkan`).
+
 ## Windows
 
 For Windows, you will also need [Visual Studio](https://visualstudio.microsoft.com) with the following workload items added:
@@ -190,5 +218,4 @@ Now you have to build the project by right clicking on the `ThreeDAnatomy` and s
 
 >IMPORTANT: Never select the option to build the solution as it will rebuild entire Unreal Engine together with it
 
-Once everything is build you can press play in top right corner (or debug) it will open the unreal editor where you can start working 
-
+Once everything is build you can press play in top right corner (or debug) it will open the unreal editor where you can start working

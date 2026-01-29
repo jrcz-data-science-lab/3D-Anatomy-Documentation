@@ -15,9 +15,9 @@ The central class is `UCPP_SimulationManager`. It owns the simulation state and 
 
 ### 1. `UCPP_SimulationManager::BeginPlay()`
 
-- Instantiates `UDiagnosisRegistery`
-- Calls `Initialize(this)` to ensure correct UObject ownership
-- Diagnosis Registery builds all available diagnoses using `DiagnosisBuilder`
+- Instantiates `UDiagnosisRegistery` and calls `Initialize(this)`
+- Loads Breathing Dot widget class via soft path and removes any editor-placed instances:
+  - Uses `UWidgetBlueprintLibrary::GetAllWidgetsOfClass` and removes widgets not marked `bIsRuntimeSpawned`
 
 ### 2. `UDiagnosisRegistery::BuildDiagnosisList()`
 
@@ -52,41 +52,31 @@ Called by UI or developer logic to switch medical scenarios.
 
 ### 1. `UCPP_SimulationManager::ChangeDiagnosis(EDiagnosisType NewDiagnosis)`
 
-- Calls `CurrentShockBehavior->OnExit()` to clean up:
-  - Destroyed FX components
-  - Cleared indicators
-  - Removed floating labels
-- Retrieves new `UCPP_Diagnosis*` from registery
-- Stores it in `ActiveDiagnosis`
-- Assigns its `RuntimeBehavior` as the new `CurrentShockBehavior`
-- Calls `CurrentShockBehavior->OnEnter(ActiveDiagnosis, this)`:
-  - FX are spawned based on diagnosis
-  - Pulse timers or parameter logic begin
-  - Floating temperatures shown if enabled
-- Spawns breathing dot widgets via `SpawnIndicators()`
-- Broadcasts `FChangeDiagnosis` delegate (for UI updates)
+Actual order in code:
+- Set `SelectedDiagnosisType`
+- `ClearActiveEffects()` (deactivate/destroy Niagara)
+- `ClearActiveIndicators()` (remove widgets & clear links)
+- Retrieve `UCPP_Diagnosis& Diagnosis` from registry
+- Broadcast `FChangeDiagnosis` with the selected `Diagnosis`
+- If there is a previous behavior: `CurrentShockBehavior->OnExit()` and null it
+- Set `CurrentShockBehavior = Diagnosis.RuntimeBehavior`
+- If behavior present: `CurrentShockBehavior->OnEnter(&Diagnosis, this)`
+- `SpawnIndicators(Diagnosis)`
+
+Notes:
+- The broadcast happens after FX/indicators are cleared, but before `OnExit/OnEnter` of behaviors.
 
 ---
 
 ## 📊 Updating Simulation
 
-Simulation parameters are changed in real-time by UI sliders (Speed, BPM, Thickness, etc.).
+Simulation parameters are changed in real time by UI sliders.
 
-### 2. `UCPP_SimulationManager::UpdateSimulation(FSimulationSlideBarsParameters* Params)`
+### 2. `UCPP_SimulationManager::UpdateSimulation()`
 
-- Updates internal `SimulationParameters`
-- Calls `CurrentShockBehavior->OnUpdate(Params)`
-  - May change pulse timing, FX intensity, label data, etc.
-- Broadcasts `FUpdateSimulation` delegate
-
-Example from Cardiogenic Shock:
-
-```cpp
-void UCardiogenicShockBehavior::OnUpdate(FSimulationSlideBarsParameters* Params) {
-  float Interval = GetPulseInterval(Params->BeatsPerMinute);
-  StartPulseTimer(Interval); // Controls Niagara pulse FX
-}
-```
+Actual order in code:
+- Broadcast `FUpdateSimulation` with `*SimulationParameters`
+- If a behavior is active: `CurrentShockBehavior->OnUpdate(SimulationParameters)`
 
 ---
 
@@ -96,45 +86,33 @@ Called when user exits, resets, or changes context.
 
 ### 3. `UCPP_SimulationManager::StopSimulation()`
 
-- Calls `CurrentShockBehavior->OnExit()`
-- Clears all FX, indicators, and temperature widgets
-- Broadcasts `FStopSimulation`
+Actual order in code:
+- Set `bIsSimulationRunning = false`
+- Broadcast `FStopSimulation`
+- `ClearActiveEffects()` and `ClearActiveIndicators()`
+- If a behavior is active: `CurrentShockBehavior->OnExit()` and null it
 
 ---
 
-## 🔄 Runtime Behavior Summary
+## 🔄 Tick-time Updates
 
-1. **BeginPlay**
-    - `DiagnosisRegistery -> BuildDiagnosisList`
-2. **Each Diagnosis Configured**
-3. **Ready to Simulate**
-
----
-
-4. **ChangeDiagnosis(Type)**
-    - Clear previous behavior and FX
-    - Load new diagnosis
-    - Assign `RuntimeBehavior`
-    - Call `OnEnter()`
-    - Spawn:
-        - FX
-        - Indicators
-        - Temperature Labels
-    - Broadcast change event
+`UCPP_SimulationManager::TickComponent()`
+- Early-outs if `TargetSkeletalMesh` or `PlayerController` is missing
+- For each active `UShockIndicator`: computes screen position from bone/socket and updates its `UBreathingDotWidget` position
+- Rotates `AFloatingTemperatureLabel` actors (core/skin) to face the camera (billboard)
 
 ---
 
-5. **UpdateSimulation()**
-    - Calls `OnUpdate()` on active behavior
-    - Modifies timers and FX
-    - Continues looping runtime behavior
+## 💬 Delegate contracts (signatures)
+
+- `FStartSimulation` — no params
+- `FStopSimulation` — no params
+- `FUpdateSimulation` — `(const FSimulationSlideBarsParameters&)`
+- `FChangeDiagnosis` — `(UCPP_Diagnosis&)`
+
+Use `AddUObject/RemoveAll` to subscribe/unsubscribe (see Blood systems docs for examples).
 
 ---
-
-6. **StopSimulation()**
-    - Cleanup
-    - Broadcast stop event
-
 
 ## 💡 Key Class Responsibilities
 
@@ -152,9 +130,7 @@ Called when user exits, resets, or changes context.
 
 ## ✅ Tips for Developers
 
-- **Encapsulation**: Avoid placing diagnosis logic in `SimulationManager`. Always delegate via `UShockBehavior`.
-- **Extendability**: Create new `UShockBehavior` subclasses for every new diagnosis.
-- **Cleanup**: Always implement `OnExit()` properly to avoid ghost widgets or FX leaks.
-- **Testing**: Toggle between diagnosis types rapidly to validate correct cleanup and re-entry behavior.
-
----
+- Ensure subscribers tolerate the actual ordering (broadcast ChangeDiagnosis before behavior OnExit/OnEnter).
+- On UpdateSimulation, expect broadcast before behavior `OnUpdate`.
+- Don’t leak widgets/FX — rely on `ClearActiveIndicators/Effects` and behavior `OnExit()`.
+- Indicators are UI widgets that are repositioned every tick; avoid expensive work inside Tick.

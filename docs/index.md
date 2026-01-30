@@ -12,6 +12,7 @@ The project itself is divided into several repositories:
 - Python script for importing the Blender models to the Unreal Engine [GitHub](https://github.com/jrcz-data-science-lab/blender-scripts)
 - Python script for generating JSON files that can be loaded in the Model tagging application [GitHub](https://github.com/jrcz-data-science-lab/Anatomy-blender-auto-prepare)     
 - This documentation [GitHub](https://github.com/jrcz-data-science-lab/3D-Anatomy-Documentation)
+- The first release [Onedrive](https://myhz-my.sharepoint.com/:f:/g/personal/li0047_hz_nl/IgDa2FBsKPF0SIZA0qtlAjwTAU-54GVRy-A9ipBUTyAYI3M?e=XKASmZ)
 
 ## How to approach this (large) project?
 

@@ -38,7 +38,7 @@ The simulation panel is currently implemented as a floating island in the top-ri
 **Client requirement:**  
 Relocate the simulation panel to the **left sidebar** to improve usability, reduce mouse travel, and maintain a uniform UI structure.
 
-**Current state:**
+**Current state (see branch feature/digestive-ui):**
 
 - Sidebar button for the simulation panel is implemented
 - The button is not yet functionally connected to the simulation panel

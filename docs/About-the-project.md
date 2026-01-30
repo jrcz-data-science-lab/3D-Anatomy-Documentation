@@ -16,7 +16,6 @@ To address this, we have created an interactive Unreal Engine–based applicatio
 
 Our goal is simple: to provide the most efficient and interactive way for teachers and students to explore the human body, deepen their understanding of anatomy, and, ultimately, contribute positively to healthcare education and society.
 
-
 ## Interactive Anatomy
 
 Understanding human anatomy becomes significantly easier when learners can interact with the subject matter. In standard lectures, instructors typically rely on slides filled with fixed-angle images, which limits their ability to demonstrate anatomical structures effectively.
@@ -31,6 +30,8 @@ Students could strengthen their understanding through interactive features inclu
 
 By integrating with external educational platforms, the application could support a variety of instructional materials and activities aligned with the nursing curriculum.
 
-## Medical resources 
+## Medical resources
 
-Information about shocks has been provided by HZ nursing teachers: [Link to the document](../misc/Shock JRCZ 9-12-2024.pdf)
+- Original anatomy model source (Blender project – available via coach)
+- Information about shocks has been provided by HZ nursing teachers: [Link to the document](../misc/Shock JRCZ 9-12-2024.pdf)
+- Information about the digestive system provided by HZ nursing teachers: [Design-Sequence](../misc/Design-Sequence-V2.xlsx)

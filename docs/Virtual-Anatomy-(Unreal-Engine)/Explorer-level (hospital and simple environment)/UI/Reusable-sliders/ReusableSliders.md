@@ -194,3 +194,11 @@ Valid signature of the function that can be triggered once simulation updates ca
 ```c++
 void UpdateBloodFlowSimulation(FSimulationSlideBarsParameters* updatedSimulationParameters);
 ```
+
+## Quantization (snap vs free)
+
+Slicer sliders (`UCPP_SlicerSlideBar`) support quantized vs free movement:
+- `bQuantize` (bool) controls whether values snap to `StepSize` on change.
+- `SetQuantizeEnabled(bool)` can be called by other widgets (e.g., a sidebar checkbox) to toggle this at runtime.
+
+In the slicer sidebar, an optional `FreeAdjustToggle` checkbox switches both distance and rotation sliders between snap and free modes.

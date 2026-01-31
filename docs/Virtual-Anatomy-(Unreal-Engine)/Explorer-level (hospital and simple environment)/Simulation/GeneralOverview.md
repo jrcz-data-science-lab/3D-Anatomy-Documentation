@@ -87,3 +87,24 @@ If a specific human body animation requires modifications such as a delay or oth
 
 For more details see [Animation classs specification](/VirtualAnatomy-Documentation/VirtualAnatomy/ExplorerLevel/Animations/BaseAnimationClass/)
 
+## Simulation Manager: Events and Flow (summary)
+- Delegates (signatures):
+  - `FStartSimulation` (no params)
+  - `FStopSimulation` (no params)
+  - `FUpdateSimulation(const FSimulationSlideBarsParameters&)`
+  - `FChangeDiagnosis(UCPP_Diagnosis&)`
+- ChangeDiagnosis order in code:
+  1) Clear FX and indicators
+  2) Get diagnosis and broadcast `FChangeDiagnosis`
+  3) Exit previous behavior (if any); enter new behavior
+  4) Spawn indicators for the new diagnosis
+- UpdateSimulation order:
+  1) Broadcast `FUpdateSimulation(*Params)`
+  2) Call `CurrentShockBehavior->OnUpdate(Params)`
+- StopSimulation order:
+  1) Broadcast `FStopSimulation`
+  2) Clear FX and indicators
+  3) Exit behavior
+
+See also: `ShockSystem/How-Everything-Connects-At-Runtime.md` for full runtime details.
+

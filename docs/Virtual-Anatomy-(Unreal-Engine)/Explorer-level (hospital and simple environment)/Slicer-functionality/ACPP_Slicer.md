@@ -2,118 +2,120 @@
 
 This class is responsible for controlling and visualizing a slicing plane in the application. It manages the position, rotation, and visibility of the slicer, synchronizing these properties with a material parameter collection used for mesh slicing.
 
+- Material Parameter Collection asset path: `/Game/Slicer/SliceParameters.SliceParameters`.
+- Vector parameters used: `Position` (plane world location) and `Direction` (plane up vector).
+- Scalar parameter used: `isSlicerOff` (1 = off/disabled, 0 = on/enabled).
+
 ## Public methods
 
 ### `ACPP_Slicer()`
 
-**Description**:
-Constructor for the `ACPP_Slicer` class.
+Constructor for the `ACPP_Slicer` class; enables ticking.
 
 ### `virtual void Tick(float DeltaTime)`
 
-**Description**:  
-Called every frame. Currently unused, but available for runtime behavior changes.
+Called every frame (currently no per-frame logic).
 
-**Parameters**:
+Parameters:
 - `DeltaTime`: Time elapsed since the last frame.
 
 ### `virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)`
 
-**Description**:  
-Binds input actions to the pawn. Not used in this slicer as control is typically handled via UI.
+Binds input actions to the pawn (not used; slicer is controlled via UI widgets).
 
-**Parameters**:
+Parameters:
 - `PlayerInputComponent`: The input component used for binding controls.
 
 ### `void SetRotation(const FRotator& Rotation)`
 
-**Description**:  
-Sets the rotation of the slicer by rotating the attached `SpringArmComponent`.
+Sets the rotation of the slicer by rotating the attached `USpringArmComponent` and updates material parameters on the next tick.
 
-**Parameters**:
-- `Rotation`: New world-space rotation to apply to the slicer arm.
+Parameters:
+- `Rotation`: New world-space rotation to apply to the spring arm.
 
 ### `FRotator GetRotation()`
 
-**Description**:  
-Retrieves the last stored rotation of the slicer. This value reflects the initial rotation, not live updates from the component.
+Returns the last stored rotation captured at BeginPlay from the spring arm.
 
-**Returns**:
-- `FRotator`: Last known slicer rotation.
+Returns:
+- `FRotator`: Initial rotation value (not live-updated after SetRotation).
 
 ### `void SetSpringArmLength(float Length)`
 
-**Description**:  
-Changes the length of the spring arm to move the slicer plane further or closer to the origin. Updates the material parameters on the next tick.
+Changes the spring arm length (distance of the plane from its pivot) and schedules an update of material parameters on the next tick.
 
-**Parameters**:
-- `Length`: The new distance (in cm) from the pivot point.
+Parameters:
+- `Length`: New arm length (cm).
 
 ### `UStaticMeshComponent* GetSlicerPlane()`
 
-**Description**:  
 Returns the static mesh component used as the slicer plane.
 
-**Returns**:
-- `UStaticMeshComponent*`: The slicing plane component.
+Returns:
+- `UStaticMeshComponent*`: The slicing plane component (can be null if not found in BP).
 
 ### `void ToggleSlicer(float NewValue) const`
 
-**Description**:  
-Toggles the slicer's visibility or activity by setting a scalar value in the material collection (where 1 is off, 0 = on !!!).
+Toggles slicer enable state via the material parameter collection.
 
-**Parameters**:
-- `NewValue`: Float value used to toggle state. `0.0` = on, `1.0` = off.
+Parameters:
+- `NewValue`: `0.0` = on/enabled, `1.0` = off/disabled.
 
 ### `void UpdateSlicerProperties() const`
 
-**Description**:  
-Updates the slicer's location and orientation in the associated material parameter collection and thus updates its 'slice' visualization in the scene.
+Writes current plane transform to the MPC:
+- `Position` is set from `PlaneComponent->GetComponentLocation()`.
+- `Direction` is set from `PlaneComponent->GetUpVector()`.
 
 ## Protected methods
 
 ### `virtual void BeginPlay()`
 
-**Description**:  
-Initializes references to components, retrieves stored slicer values from the game instance, and prepares the slicer's visual effect.
+Initialization flow:
+1. Finds `PlaneComponent` and `SpringArmComponent` attached to BP_Slicer.
+2. Captures initial `Rotation` from the spring arm.
+3. Loads the MPC asset at `/Game/Slicer/SliceParameters.SliceParameters` and gets its world instance.
+4. Reads saved values from `UCPP_GameInstance::GetSlicerValues(Position, Direction, DisablementState)`.
+5. Applies saved `Position` to `SpringArmComponent->TargetArmLength` and yaw `Direction` to the spring arm.
+6. Forces slicer off for this session start: `ToggleSlicer(1.0f)` (isSlicerOff = true).
+7. Calls `UpdateSlicerProperties()` to push plane location and direction.
+
+If required components or MPC fail to load, the slicer self-destroys to avoid runtime errors.
 
 ### `virtual void EndPlay(const EEndPlayReason::Type EndPlayReason)`
 
-**Description**:  
-Saves current slicer values (position, rotation, active state) into the game instance when the actor is removed from the world.
+On actor removal, saves current slicer values back to the game instance:
+- `Position` from `SpringArmComponent->TargetArmLength`
+- `Direction` from `SpringArmComponent->GetComponentRotation().Yaw`
+- `DisablementState` from MPC scalar `isSlicerOff`
 
-**Parameters**:
-- `EndPlayReason`: Enum value describing why the actor is ending play.
+Parameters:
+- `EndPlayReason`: Reason why the actor is ending play.
 
 ## Protected properties
 
 ### `UStaticMeshComponent* PlaneComponent`
 
-**Description**:  
-The visible slicing plane. Used for both visualization and defining the slicing region in materials.
+Visible slicing plane mesh.
 
 ### `USpringArmComponent* SpringArmComponent`
 
-**Description**:  
-Controls the distance and rotation of the slicer relative to the slicer's origin. Enables intuitive adjustments to the slicer position.
+Controls slicer plane distance and orientation relative to the pivot.
 
 ### `UMaterialParameterCollectionInstance* MPC_Instance`
 
-**Description**:  
-Represents the runtime instance of the material parameter collection. Used to dynamically set slicer-related parameters (`Position`, `Direction`, `isSlicerOff`).
+Runtime MPC instance used to update slicing parameters.
 
 ### `FRotator Rotation`
 
-**Description**:
-Stores the last known rotation of the slicer. Used to maintain state across frames and ensure consistent behavior.
+Initial rotation captured at BeginPlay; returned by `GetRotation()`.
 
 ### `UCPP_GameInstance* GameInstance`
 
-**Description**:
-Reference to the custom game instance used for storing and retrieving slicer state across sessions.
+Game instance reference used for saving and restoring slicer state (position, rotation yaw, and disablement flag).
 
 ## Notes
 
-- If `PlaneComponent` or/and `SpringArmComponent` are missing, the slicer destroys itself, preventing further functionality and possible crashes.
-- If the material parameter collection or its instance cannot be found, the slicer will also destroy itself to avoid the possible crashes.
-- Uses `GetWorld()->GetTimerManager().SetTimerForNextTick(...)` to ensure material properties update correctly after changing length.
+- If `PlaneComponent`, `SpringArmComponent`, MPC asset, or MPC instance are missing, the slicer destroys itself.
+- Uses `GetWorld()->GetTimerManager().SetTimerForNextTick(...)` to defer property updates after spring arm length changes.
+- Default session start state is OFF (disabled) regardless of previously saved disablement; position and rotation yaw are restored.

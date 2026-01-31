@@ -1,203 +1,115 @@
 # UCPP_CameraControls
 
-## Class Description
+## Overview
 
-This class handles camera movement and positioning in the scene. It uses a spherical coordinate system to calculate the camera’s position and orientation relative to a target point. This class is purely computational and does not represent a physical object in the world. It can only be accessed through the `UCPP_User` class.
+Computational camera controller for orbit-style movement around a target point. Uses spherical coordinates to derive a world position and rotation. Not a placed Actor; accessed from `UCPP_User`.
 
-### Key Features:
-- **Spherical Coordinate System**:  
-  The camera’s position is calculated using polar (`Theta`), azimuthal (`Phi`), and radial (`R`) coordinates.  
-  - **Theta (Polar)**: Controls vertical (up/down) movement.  
-  - **Phi (Azimuth)**: Controls horizontal (left/right) movement.  
-  - **Radius (R)**: Controls the distance from the target point.  
-  The spherical coordinates are converted to Unreal Engine's Cartesian coordinate system for proper positioning.
+- Spherical components:
+  - Polar (vertical/up–down)
+  - Azimuth (horizontal/left–right)
+  - Radius (distance from target)
+- Converts spherical to Cartesian for Unreal coordinates and always rotates to face the LookAt target.
+
+## Versions shipped to client
+
+- Legacy (earlier shipped build)
+  - Orbit camera using spherical coordinates (Polar, Azimuth, Radius).
+  - Zoom adjusts radius with min/max clamping.
+  - LookAt (target) is clamped to thresholds on X and Z.
+  - No direct-radius override API.
+
+- Current implementation (in code now)
+  - Same spherical model, clamped zoom, and LookAt clamping.
+  - Adds `SetRadiusDirectly(float)` to set radius precisely (used e.g. by Mesh Isolator) without applying min/max zoom clamps.
+
+## Input mapping
+
+- Current system (as in code now)
+  - Mouse drag: pans camera on X/Z (left–right = X, up–down = Z).
+    - Code path: `ACPP_User::MoveWithMouse` → `CameraControls->MoveHorizontal/MoveVertical`.
+  - WASD keys: rotate camera around target.
+    - W/S: vertical rotation (`RotatePolar`)
+    - A/D: horizontal rotation (`RotateAzimuth`)
+  - Mouse wheel (or bound axis): zoom in/out (`Zoom`), clamped to min/max radius.
+
+- Legacy system 
+  - Mouse drag: rotated camera around target (polar/azimuth changes).
+  - WASD keys: panned camera on X/Z (horizontal/vertical LookAt movement).
+  - Mouse wheel (or bound axis): zoom in/out (clamped).
 
 ## Definitions
 
-### `ANATOMY_PI` 
+- `ANATOMY_PI` — custom constant used for math (`#define ANATOMY_PI 3.14159...`).
 
-**Description**:
+## Public methods
 
-Defines a custom PI value to replace Unreal Engine’s deprecated PI definition. This ensures more reliable and consistent calculations within the application.
+- `void Init(const FVector& LookAtPos, const FVector& StartPos, float MaxRadius = 700.0f, float MinRadius = 1.0f)`
+  - Sets the initial LookAt position and starting camera position.
+  - Initializes min/max radius, XY/Z thresholds, and internal spherical from `StartPos`.
 
-## Public Methods
+- `void RotatePolar(float by)`
+  - Adjusts the polar (vertical) angle by radians; capped near ±(PI/2).
 
-### `void Init(const FVector& LookAtPos, const FVector& StartPos, float MaxRadius = 700.0f, float MinRadius = 1.0f)`
+- `void RotateAzimuth(float by)`
+  - Adjusts the azimuth (horizontal) angle by radians; wrapped into [0, 2PI).
 
-**Description**:  
-Initializes the orbit camera controls, defining the target point to orbit around and setting the radius limits.  
+- `void MoveHorizontal(float by)`
+  - Pans the LookAt position along world X by the given amount; clamps and recomputes.
 
-**Parameters**:  
-- `LookAtPos`: The position in the world around which the camera should orbit.  
-- `StartPos`: The initial position of the camera in world coordinates.
-- `maxRadius`: The maximum distance the camera can be from the target. Default is `700.0f`.  
-- `minRadius`: The minimum distance the camera can be from the target. Default is `1.0f`.  
+- `void MoveVertical(float by)`
+  - Pans the LookAt position along world Z by the given amount; clamps and recomputes.
 
+- `void Zoom(float by)`
+  - Changes the spherical radius by the given amount; clamped to `[MinimumRadius, MaximumRadius]`.
 
-### `void RotatePolar(float by)`
+- `void SetRadiusDirectly(float NewRadius)` (current implementation)
+  - Sets spherical radius exactly without min/max zoom clamping; then recomputes.
 
-**Description**:  
-Rotates the camera around the target vertically (up/down) by adjusting the polar angle (`Theta`).  
+- `void SetLookAtTarget(const FVector& LookAtTarget)`
+  - Replaces the LookAt position; clamps to thresholds; recomputes.
 
-**Parameters**:  
-- `by`: The rotation amount in radians.
+- `FVector GetLookAtPos() const`
+  - Returns the current LookAt position.
 
-### `void RotateAzimuth(float by)`
+- `FVector3d& GetPosition()`
+  - Returns a reference to the current camera world position.
 
-**Description**:  
-Rotates the camera around the target horizontally (left/right) by adjusting the azimuthal angle (`Phi`).  
+- `FRotator& GetRotation()`
+  - Returns a reference to the current camera rotation.
 
-**Parameters**:  
-- `by`: The rotation amount in radians.
+## Private methods
 
-### `FVector GetLookAtPos()`
+- `FVector3d RecalculatePosition()`
+  - Converts spherical → Cartesian relative to `LookAtPosition`.
+  - x = Center.X + R * cos(Polar) * cos(Azimuth)
+  - y = Center.Y + R * cos(Polar) * sin(Azimuth)
+  - z = Center.Z + R * sin(Polar)
+  - Calls `RecalculateRotation()` and returns the new position.
 
-**Description**:  
-Retrieves the position of the target point the camera is orbiting.  
+- `void RecalculateRotation()`
+  - Sets `Orientation = FindLookAtRotation(Location, LookAtPosition)`.
 
-**Returns**:  
-A `FVector` representing the target position in world coordinates.
+- `void ClampLookAtPosition()`
+  - Clamps X and Z of `LookAtPosition` to threshold bounds.
 
-### `void MoveHorizontal(float by)`
+## Private properties
 
-**Description**:  
-Moves the camera horizontally along the current orientation plane.  
-
-**Parameters**:  
-- `by`: The amount to move horizontally.  
-
-### `void MoveVertical(float by)`
-
-**Description**:  
-Moves the camera vertically along the current orientation plane.  
-
-**Parameters**:  
-- `by`: The amount to move vertically.
-
-### `void Zoom(float by)`
-
-**Description**:  
-Adjusts the camera's distance from the target point by modifying the radius.  
-
-**Parameters**:  
-- `by`: The amount to adjust the radius. Positive values zoom out, and negative values zoom in.
-
-### `void SetLookAtTarget(FVector LookAtTarget)`
-
-**Description**:  
-Changes the target point the camera looks at.  
-
-**Parameters**:  
-- `LookAtTarget`: A new position in world coordinates for the camera to focus on.
-
-### `FVector3d &GetPosition()`
-
-**Description**:  
-Retrieves the current position of the camera in world space.  
-
-**Returns**:  
-A reference to the `FVector3d` representing the camera’s world position.
-
-### `FRotator &GetRotation()`
-
-**Description**:  
-Retrieves the current orientation of the camera.  
-
-**Returns**:  
-A reference to the `FRotator` representing the camera’s rotation.
-
-## Private Methods
-
-### `FVector3d RecalculatePosition()`
-
-**Description**:  
-Recalculates the camera’s position in Cartesian coordinates based on the spherical coordinates:  
-
-x = R * Cos(Phi) * Cos(Theta); \
-y = R * Cos(Phi) * Sin(Theta); \
-z = R * Sin(Phi); 
-
-**Returns**:  
-A `FVector3d` representing the updated camera position in world space.
-
-### `void RecalculateRotation()`
-
-**Description**:  
-Adjusts the camera’s orientation to ensure it follows the target location when moving or rotating.
-
-### `void ClampLookAtPosition();`
-
-**Description**:
-Ensures the camera’s target position remains within defined thresholds to prevent it from moving too far away.
-
-## Private Properties
-
-### `FRotator Orientation`
-
-**Description**:  
-Represents the camera’s current orientation (rotation) in world space.
-
-### `FVector3d Location`
-
-**Description**:  
-Represents the camera’s current location in world space.
-
-### `float Radius`
-
-**Description**:  
-The current distance from the target point to the camera.  
-
-### `float MaximumRadius`
-
-**Description**:  
-The maximum allowed radius for the camera.
-
-### `float MinimumRadius`
-
-**Description**:  
-The minimum allowed radius for the camera.  
-
-### `FVector LookAtPosition`
-
-**Description**:  
-The position in world space that the camera is currently focusing on.  
-
-### `const float FullCircle`
-
-**Description**:  
-Represents a full circle in radians (\(2\pi\)). Defined as `ANATOMY_PI * 2.F`.
-
-### `float MinThresholdX`
-
-**Description**:  
-The minimum allowed threshold value for the X-axis. This defines the lower boundary beyond which values are considered out of range.
-
-### `float MaxThresholdX`
-
-**Description**:  
-The maximum allowed threshold value for the X-axis. This defines the upper boundary beyond which values are considered out of range.
-
-### `float MinThresholdZ`
-
-**Description**:  
-The minimum allowed threshold value for the Z-axis. This defines the lower boundary beyond which values are considered out of range.
-
-### `float MaxThresholdZ`
-
-**Description**:  
-The maximum allowed threshold value for the Z-axis. This defines the upper boundary beyond which values are considered out of range.
-
-### `FSphericalPoint CameraLocationInSpherical`
-
-**Description**:
-Represents the camera’s position in spherical coordinates, including polar angle (`Theta`), azimuthal angle (`Phi`), and radius (`R`). This is used for calculating the camera's position relative to the target point.
+- `FRotator Orientation`
+- `FVector3d Location`
+- `float Radius`
+- `float MaximumRadius`
+- `float MinimumRadius`
+- `FVector LookAtPosition`
+- `FSphericalPoint CameraLocationInSpherical`
+- `const float FullCircle = ANATOMY_PI * 2.F`
+- Thresholds (current defaults set in `Init`):
+  - `float MinimumThresholdX = -700.0f`
+  - `float MaximumThresholdX = 600.0f`
+  - `float MinimumThresholdZ = 0.0f`
+  - `float MaximumThresholdZ = 1200.0f`
 
 ## Notes
 
-- The spherical coordinate system provides precise control over camera movement, allowing dynamic manipulation of angles and distance.  
-- Ensure angles passed to methods like `RotatePolar` or `RotateAzimuth` are in radians for accurate results.  
-- This class is designed to be accessed indirectly and is not meant to be placed directly in the world.  
-
-## Further reading and resources 
-
-[Great article about the orbit camera](https://www.mbsoftworks.sk/tutorials/opengl4/026-camera-pt3-orbit-camera/)
+- All rotation inputs are radians.
+- Movement methods recompute position each call; rotation is always set to face `LookAtPosition`.
+- Both legacy and current versions use the same spherical model and threshold clamping; the current version additionally provides `SetRadiusDirectly` for precise radius control.

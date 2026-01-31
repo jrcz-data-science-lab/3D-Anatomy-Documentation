@@ -119,7 +119,7 @@ What this means in practise is that the parent (`UCPP_TreeViewEntryWidget`) hold
 
 ## Tree view child entry widget
 
-*Associated Classes*: `CPP_TreeViewEntryChild`, `CPP_TreeViewEntryChildWidget`, `WBP_TreeViewEntryChildWidget`, `MeshSelector`
+*Associated Classes*: `CPP_TreeViewEntryChild`, `CPP_TreeViewChildEntryWidget`, `WBP_TreeViewEntryChildWidget`, `MeshSelector`
 
 As mentioned earlier, each TreeView entry contains a list view, representing the skeletal meshes that can be interacted with. To populate this list view, we created the `CPP_TreeViewEntryChild` class, which manages both the data and visual appearance of items within the `ListView`.
 
@@ -129,11 +129,28 @@ This process follows the same approach used for tree view items. The only differ
 void UCPP_TreeViewChildEntryWidget::NativeOnListItemObjectSet(UObject* ListItemObject)
 {
 	IUserObjectListEntry::NativeOnListItemObjectSet(ListItemObject);
-	if(ListItemObject)
+	if (ListItemObject)
 	{
-		// cast from UObject to *CPP_TreeViewEntryChild to get the right data 
+		// cast from UObject to UCPP_TreeViewEntryChild to get the right data
 		auto TreeViewChildEntry = Cast<UCPP_TreeViewEntryChild>(ListItemObject);
-		ActorName->SetText(FText::FromString(TreeViewChildEntry->GetName()));
+		if (!TreeViewChildEntry)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("ListItemObject is not UCPP_TreeViewEntryChild"));
+			return;
+		}
+
+		UE_LOG(LogTemp, Warning, TEXT("TreeViewChildEntry: %s"), *TreeViewChildEntry->GetName().ToString());
+
+		if (ActorName)
+		{
+			ActorName->SetText(TreeViewChildEntry->GetName());
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("TreeViewChildEntryWidget.ActorName is null"));
+		}
+
+		// Keep references so we can act on highlight/show/hide later
 		ReferencingActor = TreeViewChildEntry->GetActor();
 		ReferencingComponent = TreeViewChildEntry->GetComponent();
 	}
@@ -142,17 +159,77 @@ void UCPP_TreeViewChildEntryWidget::NativeOnListItemObjectSet(UObject* ListItemO
 
 As seen in the implementation, both the referencing actor and the specific component are stored, allowing efficient access to both the Blueprint that contains the picker and merged meshes, as well as the pointer to the individual merged body part. This design is more efficient than repeatedly retrieving all children and helps reduce memory bandwidth usage.
 
-The logic for hiding child elements is straightforward. A key detail is that when we hide the skeletal mesh, we also disable the collision on all its child components (picker meshes) to ensure they are truly perceived as hidden. This is implemented inside the `HideAll` and `ShowAll` functions in `C++` and they are called from the Blueprint for better organizations and maintainability. 
+Highlighting is managed through the `MeshSelector` class, which we retrieve as a pointer using the `AnatomyUtils` helper namespace. Additionally, we pass the component (the skeletal mesh or static mesh) referenced by the child element as a parameter to the highlight function. The current implementation also guards against missing components or missing selectors:
 
-Highlighting is managed through the `MeshSelector` class, which we retrieve as a pointer using the `AnatomyUtils` helper namespace. Additionally, we pass the component (the skeletal mesh) referenced by the child element as a parameter to the highlight function.
-
-```c+++
+```c++
 void UCPP_TreeViewChildEntryWidget::Highlight()
 {
-	AnatomyUtils::GetMeshSelector(GetWorld())->HighlightComponent(ReferencingComponent);
+	// Only highlight when we have a valid component and a mesh selector
+	if (ReferencingComponent)
+	{
+		auto Selector = AnatomyUtils::GetMeshSelector(GetWorld());
+		if (Selector)
+		{
+			Selector->HighlightComponent(ReferencingComponent);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("MeshSelector not available in current world"));
+		}
+	}
 }
 ```
 
+The logic for hiding and showing child elements is straightforward. When we hide the skeletal mesh, we also disable collision on all its `UStaticMeshComponent` children (picker meshes) to ensure they are truly hidden. The implementation now includes null guards and logging to avoid crashes when entries do not reference a concrete mesh:
 
+```c++
+void UCPP_TreeViewChildEntryWidget::HideAll()
+{
+	if (ReferencingComponent)
+	{
+		ReferencingComponent->SetVisibility(false, false);
+		SetCollisionOnChildren(ECollisionEnabled::Type::NoCollision);
+	}
+}
 
+void UCPP_TreeViewChildEntryWidget::ShowAll()
+{
+	if (ReferencingComponent)
+	{
+		ReferencingComponent->SetVisibility(true, false);
+		SetCollisionOnChildren(ECollisionEnabled::Type::QueryOnly);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("ShowAll called with null ReferencingComponent (group entry?)"));
+	}
+}
 
+void UCPP_TreeViewChildEntryWidget::SetCollisionOnChildren(ECollisionEnabled::Type value)
+{
+	if (!ReferencingActor)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("SetCollisionOnChildren: ReferencingActor is null"));
+		return;
+	}
+
+	TArray<UStaticMeshComponent*> Children;
+	ReferencingActor->GetComponents<UStaticMeshComponent>(Children);
+	if (Children.Num() > 0)
+	{
+		for (auto* Child : Children)
+		{
+			if (Child)
+			{
+				Child->SetCollisionEnabled(value);
+			}
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("There are no UStaticMeshComponent children on actor %s"), *ReferencingActor->GetName());
+	}
+}
+```
+
+These C++ functions are called from Blueprint for better organization and maintainability; the Blueprint layer decides when to highlight, hide, or show elements based on user interaction in the UI.

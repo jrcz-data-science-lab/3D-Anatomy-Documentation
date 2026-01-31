@@ -9,3 +9,23 @@ The sidebar provides a checkbox to enable or disable the slicer entirely, slider
 During initialization, the sidebar checks for the presence of the slicer actor and associated widgets. If any required component is missing, it sets an internal error state, which can be queried to diagnose configuration issues. Additionally, the sidebar loads any previously saved slicer parameters from the game instance so that the interface reflects the last-used values, offering a consistent user experience across sessions.
 
 Overall, the slicer and its sidebar work in tandem to give users precise and flexible control over anatomical visualization, blending interactive 3D manipulation with a clean and accessible interface.
+
+## Session Start / Saved State
+- On construct, previously saved distance (arm length) and rotation (yaw) are restored.
+- The enabled state (checkbox) is not auto-restored: slicer always starts disabled (OFF) for safety and consistency; checkbox is forced unchecked.
+- Checkbox mapping: checked = slicer ON (value 0.0 passed to ToggleSlicer), unchecked = slicer OFF (value 1.0).
+
+## Slider Quantization Toggle
+- Distance and rotation sliders can operate in snapped (quantized) or free mode.
+- When the optional Free Adjust toggle is present and checked, sliders move freely (no snapping).
+- When unchecked, slider values snap to configured StepSize.
+
+## Plane Visibility Rules
+- When the sidebar widget is shown (opened), the sidebar calls `ShowSlicerPlane()`, which does `SlicerActor->GetSlicerPlane()->SetVisibility(true)` if the plane component exists.
+- When the sidebar widget is hidden (closed), it calls `HideSlicerPlane()`, which sets the plane mesh visibility to `false`.
+- This only shows/hides the plane mesh in the viewport. It does not enable or disable the slicing effect; that is controlled by the checkbox (which writes `isSlicerOff` via `ToggleSlicer`). The slicer can be ON while the plane mesh is hidden to keep the view uncluttered.
+- Both functions are null-guarded; if the plane component is missing, a warning is logged and the call is skipped.
+
+## Error Handling Summary
+- Missing slicer actor or critical widget → sidebar sets internal error flag and disables further interactions.
+- Missing plane component logs a warning but does not hard-disable the UI.

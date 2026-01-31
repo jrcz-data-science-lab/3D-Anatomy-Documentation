@@ -18,3 +18,20 @@ This code logic is applied through the Blueprint `BP_Slicer`, which is placed in
 
     If BP_Slicer is not present in one of the Explorer levels or `ACPP_Slicer` throws any error, the slicer functionality will be disabled and unavailable. 
     This means slicing-related controls in the UI will disappear, and materials relying on slicer parameters will not display any slicing behavior.
+
+## Default behavior and saved state
+- At level start, the slicer is always forced OFF (disabled) for the session to keep UI and runtime in sync (e.g., slicer was left ON in the previous session but the UI starts unchecked).
+- Previously saved distance (spring arm length) and rotation yaw are restored from the game instance.
+- The enabled/disabled state is not auto-restored; the checkbox in the sidebar starts unchecked.
+
+### Checkbox mapping explained
+The material uses a scalar named `isSlicerOff`, so the checkbox sends values that look “inverted”:
+- Checked → send `0.0` → `isSlicerOff = 0` (false) → slicer ON
+- Unchecked → send `1.0` → `isSlicerOff = 1` (true) → slicer OFF
+
+This mapping is independent of the startup rule above. On startup, the slicer actor sets `isSlicerOff = 1` (OFF) and the sidebar sets the checkbox unchecked to match. When you check the box, it flips to ON by sending `0.0`.
+
+## UI integration
+- The `UCPP_SlicerSideBar` controls enable/disable, distance, and rotation.
+- When the sidebar is shown, the plane mesh is shown (if present); when hidden, the plane is hidden.
+- An optional "Free Adjust" toggle can switch distance/rotation sliders between snapped-to-step and free movement.

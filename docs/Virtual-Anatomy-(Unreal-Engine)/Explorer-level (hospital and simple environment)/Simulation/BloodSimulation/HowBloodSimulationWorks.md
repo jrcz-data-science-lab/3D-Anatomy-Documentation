@@ -78,9 +78,22 @@ void ACPP_BloodPathSystem::Init(UCPP_SimulationManager* SimManager, USplineCompo
 
 		BloodNiagaraSystem = Blood;
 
+    		// Destroy the existing component before creating a new one
+		if (BloodParticleComponent)
+		{
+			BloodParticleComponent->DestroyComponent();
+			BloodParticleComponent = nullptr;
+		}
+
+		// Create new attached Niagara system instance
 		BloodParticleComponent = UNiagaraFunctionLibrary::SpawnSystemAttached(
-			BloodNiagaraSystem, SplineToFollow, NAME_None, FVector(0.f), FRotator(0.f),
-			EAttachLocation::KeepRelativeOffset, true, false
+			BloodNiagaraSystem,
+			SplineToFollow,
+			NAME_None,
+			FVector(0.f),
+			FRotator(0.f),
+			EAttachLocation::KeepRelativeOffset,
+			false
 		);
 	}
 }
@@ -101,7 +114,7 @@ The particle system is represented by an actor structured as follows:
 =====================================================================
 ```
 
-This actor is not manually placed in the world. Instead, `CPP_BloodFlowSimulation` iterates over the splines it contains and creates an actor for each spline. All logic for `ACPP_BloodPathSystem` is encapsulated within the actor itself.
+This actor is not manually placed in the world. Instead, `CPP_ArteriesBloodFlowSimulation` iterates over the splines it contains and creates an actor for each spline. All logic for `ACPP_BloodPathSystem` is encapsulated within the actor itself.
 
 ```c++
 // BeginPlay of ACPP_ArteriesBloodFlowSimulation class
@@ -120,3 +133,85 @@ for (auto& spline : TempSplines)
     }
 }
 ```
+
+## Runtime updates and reinitialization
+
+- **Slider updates**  
+  `ACPP_BloodParticleSystemBase::HandleSimulationUpdate(const FSimulationSlideBarsParameters&)`:
+  - Guards against invalid actor, shutdown state, invalid `SimulationManager`, or invalid/unregistered `BloodParticleComponent`.
+  - If the Niagara system instance is not ready yet, defers the update with `SetTimerForNextTick` and retries.
+  - Recalculates the heartbeat interval from the current BPM.
+  - Sets Niagara variables `Speed` and `BloodThickness` from `UpdatedParameters`.
+  - Calls `BloodParticleComponent->ReinitializeSystem()` so changes apply immediately.
+
+- **Diagnosis change**  
+  `ACPP_BloodParticleSystemBase::HandleDiagnosisChange(UCPP_Diagnosis&)`:
+  - Guards against invalid actor, shutdown, or invalid `SimulationManager` / `BloodParticleComponent`.
+  - Recalculates heartbeat interval from the current BPM using diagnosis parameters.
+  - Reads `FSimulationSlideBarsParameters` from `selectedDiagnosis.GetSimulationParameters()`.
+  - Updates Niagara `Speed` and `BloodThickness` (does **not** reinitialize in the base class).
+
+- **Path system specifics**  
+  `ACPP_BloodPathSystem` extends the base behavior:
+  - `HandleSimulationUpdate`:
+    - Calls `Super::HandleSimulationUpdate(UpdatedParameters)` to apply speed/thickness and reinitialize.
+    - If the actor and `BloodParticleComponent` are valid, computes 
+      `LifeTime = SplineLength / (Speed * 220)` and writes it to Niagara.
+    - If the system is active, calls `ReinitializeSystem()` again.
+  - `HandleDiagnosisChange`:
+    - Logs the diagnosis change.
+    - If the particle component is valid, calls `HandleSimulationUpdate(*selectedDiagnosis.GetSimulationParameters())`.
+    - If the system is active, calls `ReinitializeSystem()` again.
+
+- **Ruptured artery specifics**  
+  `ACPP_RupturedArtery`:
+  - In `BeginPlay`, calls `Init(AnatomyUtils::GetSimulationManager(GetWorld()))` and deactivates its Niagara component.
+  - `HandleDiagnosisChange` checks `SimulationManager->CompareDiseaseTypes(EDiagnosisType::HypovolemicShock)`:
+    - Activates the component for hypovolemic shock.
+    - Deactivates it for any other diagnosis.
+  - `HandleSimulationUpdate` intentionally does nothing (avoids reinitialization-based squirting when sliders move).
+  - `HandleSimulationEnd` deactivates the Niagara component.
+
+## Heartbeat and ticking
+
+- **Heartbeat frequency**  
+  Derived from BPM via `AnatomyUtils::ConvertBeatsPerMinuteToBeatsPerSecond(...)` and applied with
+  `SetHearthBeatInterval(...)`. Heartbeat is recalculated:
+  - During initialization in `Init`.
+  - On simulation start via `HandleSimulationStart`.
+  - On slider updates via `HandleSimulationUpdate`.
+  - On diagnosis changes via `HandleDiagnosisChange`.
+
+- **Per-beat behavior**  
+  - Base `ACPP_BloodParticleSystemBase::HeartBeat` only guards against invalid state and stops the timer if needed.
+  - `ACPP_BloodPathSystem::HeartBeat` activates the Niagara component when `SimulationManager->GetIsSimulationRunign()` is true and the component exists.
+
+- **Per-frame Tick**  
+  - Base class:
+    - `PrimaryActorTick.bCanEverTick = false`.
+    - `Tick` does nothing beyond `Super::Tick`.
+  - `ACPP_BloodPathSystem`:
+    - `PrimaryActorTick.bCanEverTick = true`.
+    - `Tick` calls `Super::Tick` only; all visual behavior is event/heartbeat-driven.
+  - `ACPP_RupturedArtery`:
+    - `PrimaryActorTick.bCanEverTick = false`.
+
+## Null-guards and deferred updates
+
+- All handlers in `ACPP_BloodParticleSystemBase` and derived classes use guard checks to avoid crashes when actors/components are destroyed or the world is shutting down:
+  - `IsValid(this)` and `bIsShuttingDown`.
+  - `SimulationManager` validity.
+  - `BloodParticleComponent` validity and registration.
+  - A valid Niagara system instance (`GetSystemInstanceController()`).
+- If the Niagara system instance is not ready yet in `HandleSimulationUpdate`, the update is deferred by one tick using
+  `GetWorld()->GetTimerManager().SetTimerForNextTick(...)` and retried.
+
+## Variables used by Niagara
+
+- **Base class**: `Speed`, `BloodThickness`.
+- **Path system**: additionally `LifeTime` (computed from spline length and current speed).
+
+## Spawning overview (runtime)
+
+- `ACPP_ArteriesBloodFlowSimulation::BeginPlay()` gathers child components of the arteries skeletal mesh, filters `USplineComponent` instances, and for each calls `SpawnBloodParticle(spline)`.
+- Each spawned `ACPP_BloodPathSystem` executes `Init(SimulationManager, Spline, BloodNiagaraSystem)` and manages its own Niagara instance according to the rules described above.
